@@ -10,6 +10,8 @@ import html
 import json
 import os
 import re
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = ROOT
@@ -33,7 +35,7 @@ EMAIL = "taxhelp@primetaxcpa.com"
 ADDRESS_1 = "2300 Lakeview Pkwy, Suite 700"
 ADDRESS_2 = "Alpharetta, Georgia 30009"
 CALENDLY = "https://calendly.com/kumar-at-prime"
-BLOG = LIVE + "/blog"
+BLOG = "blog.html"  # Learning Center (articles copied from the live blog by src/scrape_blog.py)
 MAP_EMBED = "https://www.google.com/maps?q=2300+Lakeview+Pkwy+Suite+700+Alpharetta+GA+30009&output=embed"
 SOCIAL = {
     "x": "https://twitter.com/primetaxcpa",
@@ -75,6 +77,8 @@ CDN_IMG = {
 
 
 def og_url(img):
+    if img.startswith("http"):
+        return img
     return CDN + CDN_IMG.get(img, CDN_IMG["office-exterior.webp"])
 
 
@@ -580,21 +584,22 @@ WHY_ITEMS = [
 # Reviews currently on the live site (5-star filter). To be replaced by the CountingWorks review feed.
 REVIEWS = [("So good at what they do.", "Lionel K."), ("Excellent.", "Lionel K.")]
 
-# Latest Learning Center posts on the live homepage at the time of the snapshot (Oct 2026).
-POSTS = [
-    ("blog-1.jpg", "10/14/2026 08:55 AM", "Why Clean Financial Statements Matter When You Sell a Business",
-     "Discover why clean, consistent financial statements and trusted accounting guidance build buyer confidence, streamline due diligence, and maximize value when selling a business.",
-     BLOG + "/why-clean-financial-statements-matter-when-you-sell-a-business"),
-    ("blog-2.jpg", "10/13/2026 01:36 PM", "Crowdfunding and Taxes: What Organizers and Contributors Need to Know",
-     "A comprehensive guide explaining the tax implications of donation-based, rewards-based, and equity crowdfunding for both campaign organizers and backers.",
-     BLOG + "/crowdfunding-and-taxes-what-organizers-and-contributors-need-to-know"),
-    ("blog-3.jpg", "10/12/2026 12:36 PM", "Thinking About Selling Your Business? Start Preparing Your Financials Now",
-     "Preparing to sell a business requires clean, credible financial records. Learn how early financial preparation, add-back documentation, and lender alignment impact deal value.",
-     BLOG + "/thinking-about-selling-your-business-start-preparing-your-financials-now"),
-    ("blog-4.jpg", "10/12/2026 09:58 AM", "Keeping Your Beneficiaries Up-to-Date",
-     "A periodic review of your designated beneficiaries is vital. Learn why you should check your will, savings, and insurance policies to protect your estate planning goals.",
-     BLOG + "/keeping-your-beneficiaries-up-to-date"),
-]
+# Learning Center articles, newest first (copied from the live blog by src/scrape_blog.py)
+with open(os.path.join(ROOT, "src", "content", "blog.json"), encoding="utf-8") as _f:
+    BLOG_POSTS = sorted(json.load(_f), key=lambda a: a["datetime_utc"], reverse=True)
+
+
+def post_url(a):
+    return f"blog/{a['slug']}.html"
+
+
+def home_date(a):
+    """The live homepage prints article times in Pacific time, e.g. 10/12/2026 09:58 AM."""
+    utc = datetime.strptime(a["datetime_utc"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    return utc.astimezone(ZoneInfo("America/Los_Angeles")).strftime("%m/%d/%Y %I:%M %p")
+
+
+POSTS = [(a["thumb"], home_date(a), a["title"], a["excerpt"], post_url(a)) for a in BLOG_POSTS[:4]]
 
 
 def build_home():
@@ -810,11 +815,11 @@ def build_home():
 
     posts = "".join(f'''
       <article class="post-card" data-reveal>
-        <a class="post-card__media" href="{url}"><img src="@/assets/img/{img}" alt="" loading="lazy"></a>
+        <a class="post-card__media" href="{href(url)}"><img src="@/{img}" alt="" loading="lazy"></a>
         <p class="post-card__meta">{date}</p>
-        <h3><a href="{url}">{e(t)}</a></h3>
+        <h3><a href="{href(url)}">{e(t)}</a></h3>
         <p>{e(ex)}</p>
-        <a class="link-arrow post-card__more" href="{url}">Read full story {I["arrow"]}</a>
+        <a class="link-arrow post-card__more" href="{href(url)}">Read full story {I["arrow"]}</a>
       </article>''' for img, date, t, ex, url in POSTS)
     blog = f'''
 <section class="section section--ivory">
@@ -831,7 +836,7 @@ def build_home():
       </div>
     </div>
     <div class="post-grid post-grid--4" data-stagger="0.1">{posts}</div>
-    <div class="post-all" data-reveal><a class="btn btn--ghost" href="{BLOG}">View all articles {I["arrow"]}</a></div>
+    <div class="post-all" data-reveal><a class="btn btn--ghost" href="{href(BLOG)}">View all articles {I["arrow"]}</a></div>
   </div>
 </section>'''
 
@@ -1612,6 +1617,87 @@ def build_legal():
         write_page(path, meta_title, meta_desc, body, og_img="page-privacy.jpg")
 
 
+# ---------------------------------------------------------------------------
+# Learning Center: listing + one page per article (text as published on the live blog)
+# ---------------------------------------------------------------------------
+NEWSLETTER = f'''
+<section class="section section--tight">
+  <div class="container container--narrow">
+    <div class="newsletter" data-reveal>
+      <div><h3>Want tax &amp; accounting tips and insights?</h3><p>Sign up for our newsletter.</p></div>
+      <form data-cw-form="newsletter" novalidate>
+        <label class="sr-only" for="nl-email-blog">Email address</label>
+        <input id="nl-email-blog" type="email" name="email" placeholder="Email address" autocomplete="email" required>
+        <button class="btn btn--light btn--sm" type="submit">Notify me</button>
+      </form>
+      <p class="newsletter__legal">{LEGAL_SUBMIT}</p>
+    </div>
+  </div>
+</section>'''
+
+
+def share_links(a):
+    url = f"{LIVE}/blog/{a['slug']}"
+    t = a["title"]
+    q = lambda v: v.replace(" ", "%20").replace("&", "%26")
+    items = [
+        ("Facebook", f"https://www.facebook.com/sharer/sharer.php?u={url}&quote={q(t)}"),
+        ("Twitter", f"https://twitter.com/intent/tweet?source={url}&text={q(t)}:%20{url}"),
+        ("WhatsApp", f"whatsapp://send?text={q(t)}%20{url}"),
+        ("LinkedIn", f"http://www.linkedin.com/shareArticle?mini=true&url={url}&title={q(t)}&summary=&source={url}"),
+        ("Pinterest", f"http://pinterest.com/pin/create/button/?url={url}&description="),
+        ("Reddit", f"http://www.reddit.com/submit?url={url}&title={q(t)}"),
+        ("Email", f"mailto:?subject=I%20wanted%20you%20to%20see%20this&body={url}"),
+    ]
+    return "".join(f'<a href="{e(u)}" target="_blank" rel="noopener">{n}</a>' for n, u in items)
+
+
+def build_blog():
+    cards = "".join(f'''
+      <article class="post-card" data-reveal>
+        <a class="post-card__media" href="{href(post_url(a))}"><img src="@/{a['thumb']}" alt="" loading="lazy"></a>
+        <p class="post-card__cats">{e(", ".join(a["categories"]))}</p>
+        <h3><a href="{href(post_url(a))}">{e(a["title"])}</a></h3>
+        <p>{e(a["excerpt"])}</p>
+        <p class="post-card__meta">{e(a["date_short"])}</p>
+      </article>''' for a in BLOG_POSTS)
+    body = page_hero("Learning Center", None, None, None, [("Learning Center", None)])
+    body += f'''
+<section class="section section--ivory">
+  <div class="container"><div class="post-grid" data-stagger="0.08">{cards}</div></div>
+</section>''' + NEWSLETTER
+    write_page("blog.html", f"Learning Center - {FIRM}",
+               f"{FIRM}'s learning center offers free tax planning, bookkeeping, and small business tips and tricks. Check back often for new content.",
+               body)
+
+    for a in BLOG_POSTS:
+        parts = []
+        for b in a["blocks"]:
+            if b["type"] == "prose":
+                parts.append(f'<div class="prose post-body">{b["html"]}</div>')
+            elif b["type"] == "cta":
+                parts.append(f'''<aside class="post-cta" data-reveal><strong>{e(b["title"])}</strong><span>{e(b["text"])}</span>
+          <a class="btn" href="{e(href(b["href"]))}" target="_blank" rel="noopener">{e(b["label"])} {I["arrow"]}</a></aside>''')
+            elif b["type"] == "video":
+                parts.append(f'<div class="post-video" data-reveal><iframe src="{e(b["src"])}" title="{e(b["title"])}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>')
+        cover = f'<figure class="post-cover" data-reveal="clip"><img src="@/{a["hero"]}" alt=""></figure>' if a.get("hero") else ""
+        body = page_hero(a["title"], a["date_long"], None, None, [("Learning Center", BLOG), (a["title"], None)])
+        body += f'''
+<section class="section">
+  <div class="container container--narrow post">
+    {cover}
+    {"".join(parts)}
+    <div class="post-share"><span>Share this article...</span>{share_links(a)}</div>
+  </div>
+</section>''' + NEWSLETTER
+        ld = [{"@type": "BlogPosting", "headline": a["title"], "datePublished": a["datetime_utc"].replace(" ", "T") + "Z",
+               "image": a.get("hero_src"), "description": a["description"],
+               "author": {"@id": LIVE + "/#firm"}, "publisher": {"@id": LIVE + "/#firm"},
+               "mainEntityOfPage": f"{LIVE}/blog/{a['slug']}"}]
+        write_page(post_url(a), f"{a['title']} | {FIRM}", a["description"], body,
+                   og_img=a.get("hero_src") or "office-exterior.webp", ld=ld)
+
+
 def main():
     build_home()
     build_firm_background()
@@ -1626,6 +1712,7 @@ def main():
     build_contact()
     build_tracker()
     build_legal()
+    build_blog()
     skip = {os.path.join(OUT, d) for d in ("src", "_old-draft", ".git", ".vscode")}
     count = sum(len([f for f in fs if f.endswith(".html")])
                 for d, _, fs in os.walk(OUT) if not any(d == x or d.startswith(x + os.sep) for x in skip))
