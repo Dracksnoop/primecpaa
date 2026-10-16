@@ -4,7 +4,7 @@
 All copy is taken from the live site (primetaxcpa.com). Corrections applied
 from the work checklist are marked with "# checklist:" comments.
 
-Run:  python3 src/build.py      (writes into ./site)
+Run:  python3 src/build.py      (writes the pages into the repository root)
 """
 import html
 import json
@@ -12,7 +12,7 @@ import os
 import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "site")
+OUT = ROOT
 
 # ---------------------------------------------------------------------------
 # Firm details. The firm name is pending client confirmation
@@ -1626,7 +1626,9 @@ def main():
     build_contact()
     build_tracker()
     build_legal()
-    count = sum(len([f for f in fs if f.endswith(".html")]) for _, _, fs in os.walk(OUT))
+    skip = {os.path.join(OUT, d) for d in ("src", "_old-draft", ".git", ".vscode")}
+    count = sum(len([f for f in fs if f.endswith(".html")])
+                for d, _, fs in os.walk(OUT) if not any(d == x or d.startswith(x + os.sep) for x in skip))
     print(f"Built {count} pages into {OUT}")
 
 
